@@ -172,6 +172,6 @@ if __name__ == '__main__':
         threading.Thread(target=server_loop, daemon=True).start()
 
         while run_flag:
-            command = input('Для выхода введите "exit"\n')
-            if command.lower() == 'exit':
+            command = input('Для выхода введите "stop"\n')
+            if command.lower() == 'stop':
                 run_flag = False

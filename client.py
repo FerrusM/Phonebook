@@ -35,21 +35,24 @@ class ClientForm(Tk):
 
         self.connection_bar = ConnectionBar(parent=self)  # Строка подключения.
         self.connection_bar.button.config(command=self.__onReconnectButtonClick)
-        self.connection_bar.pack(fill=BOTH, padx=2, pady=2)
-
-        self.table = Table(parent=self)  # Таблица.
-        self.table.pack(fill=BOTH, padx=2, pady=2)
-
-        self.add_panel = AddPanel(parent=self)  # Панель добавления новой записи.
-        self.add_panel.button_add.config(command=self.__addContact)
-        self.add_panel.pack(side=LEFT, fill=BOTH, padx=2)
+        self.connection_bar.pack(side=TOP, fill=X, padx=2, pady=2)
 
         self.search_panel = SearchPanel(parent=self)  # Панель поиска.
-        self.search_panel.pack(side=LEFT, fill=BOTH, padx=2)
+        self.search_panel.pack(side=TOP, fill=X, padx=2, pady=2)
+
+        self.table = Table(parent=self)  # Таблица.
+        self.table.pack(side=TOP, fill=BOTH, padx=2, pady=2, expand=True)
+
+        # self.search_panel = SearchPanel(parent=self)  # Панель поиска.
+        # self.search_panel.pack(side=LEFT, fill=BOTH, padx=2, expand=True)
 
         self.delete_panel = DeletePanel(parent=self)  # Панель просмотра и удаления.
         self.delete_panel.button_del.config(command=self.__deleteContact)
-        self.delete_panel.pack(side=LEFT, fill=BOTH, padx=2)
+        self.delete_panel.pack(side=LEFT, fill=X, padx=2, expand=True)
+
+        self.add_panel = AddPanel(parent=self)  # Панель добавления новой записи.
+        self.add_panel.button_add.config(command=self.__addContact)
+        self.add_panel.pack(side=RIGHT, fill=X, padx=2, expand=True)
 
         self.__selected_bind = self.table.table.bind('<<TreeviewSelect>>', self.__onSelected)
 
@@ -324,14 +327,14 @@ class ConnectionBar(Frame):
 
 class Table(Frame):
     """Таблица."""
-    def __init__(self, phones: list[Contact] | None = None, parent=None):
+    def __init__(self, parent: ClientForm, phones: list[Contact] | None = None):
         super().__init__(master=parent, borderwidth=1, relief=SOLID)
 
         title = Label(master=self, text='ТЕЛЕФОННАЯ КНИГА')
-        title.pack()
+        title.pack(side=TOP, fill=X)
 
         self.table = ttk.Treeview(master=self, columns=tuple(Columns.__members__.keys()), show='headings', selectmode='browse')
-        self.table.pack(fill=BOTH)
+        self.table.pack(fill=BOTH, expand=True)
 
         for column in Columns:
             self.table.heading(column=str(column.name), text=column.value)
@@ -397,7 +400,7 @@ class EntryBar(Frame):
         label_number = Label(master=self, text=text)
         label_number.pack(side=LEFT, fill=NONE)
         self.entry_number = Entry(master=self)
-        self.entry_number.pack(side=RIGHT, fill=X)
+        self.entry_number.pack(side=RIGHT, fill=X, expand=True)
 
     def get(self) -> str:
         return self.entry_number.get()
@@ -415,19 +418,19 @@ class AddPanel(Frame):
         title.pack(side=TOP)
 
         self.frame_number = EntryBar(text='Номер:', parent=self)
-        self.frame_number.pack(anchor=W, fill=X)
+        self.frame_number.pack(side=TOP, fill=X)
 
         self.frame_surname = EntryBar(text='Фамилия:', parent=self)
-        self.frame_surname.pack(anchor=W, fill=X)
+        self.frame_surname.pack(side=TOP, fill=X)
 
         self.frame_name = EntryBar(text='Имя:', parent=self)
-        self.frame_name.pack(anchor=W, fill=X)
+        self.frame_name.pack(side=TOP, fill=X)
 
         self.frame_patronymic = EntryBar(text='Отчество:', parent=self)
-        self.frame_patronymic.pack(anchor=W, fill=X)
+        self.frame_patronymic.pack(side=TOP, fill=X)
 
         self.frame_note = EntryBar(text='Заметка:', parent=self)
-        self.frame_note.pack(anchor=W, fill=X)
+        self.frame_note.pack(side=TOP, fill=X)
 
         self.button_add = ttk.Button(master=self, text='Добавить', state=DISABLED)
         self.button_add.pack(side=BOTTOM)
@@ -535,14 +538,11 @@ class SearchPanel(Frame):
         self.combobox = ttk.Combobox(master=field_frame, values=items, state='readonly')
         self.combobox.current(0)
         self.combobox.pack(side=LEFT)
-        field_frame.pack(side=TOP)
-
-        search_frame = Frame(master=self)
-        search_label = Label(master=search_frame, text='Поиск:')
+        search_label = Label(master=field_frame, text='Значение:')
         search_label.pack(side=LEFT, fill=NONE)
-        self.entry = Entry(master=search_frame, textvariable=self.var)
-        self.entry.pack(side=RIGHT, fill=X)
-        search_frame.pack(side=TOP, fill=X)
+        self.entry = Entry(master=field_frame, textvariable=self.var)
+        self.entry.pack(side=RIGHT, fill=X, expand=True)
+        field_frame.pack(side=TOP, fill=X)
 
         self.combobox.bind('<<ComboboxSelected>>', onSelected)
 
