@@ -6,9 +6,6 @@ from tkinter import *
 from tkinter import ttk
 from common import Contact, PORT, ClientRequest, Commands, ServerResponse, Filter
 
-host: str = 'localhost'  # Строка, представляющая либо имя хоста в нотации домена Интернета, либо IPv4-адрес.
-address: tuple[str, int] = (host, PORT)
-
 
 class RepeatTimer(threading.Timer):
     def __init__(self, interval: float, function):
@@ -21,75 +18,78 @@ class RepeatTimer(threading.Timer):
 
     def stop(self):
         self.__interrupt = True
-        self.join()
-        self.cancel()
-        pass
+        self.join()  # Дожидаемся завершения работы потока.
 
 
 class ClientForm(Tk):
+    AUTOUPDATE_INTERVAL: float = 5.0
+
     def __init__(self):
         super().__init__()
         self.title('Клиент')  # Заголовок окна.
         self.geometry("1200x600")  # Устанавливаем размеры окна.
 
-        def autoupdate():
-            # if not self.updateData():  # Обновляем список контактов клиента.
-            #     self.connection_flag = False
-
-            self.updateData(self.filter)  # Обновляем список контактов клиента.
-
-        self.__updating_timer = RepeatTimer(interval=5.0, function=autoupdate)
-        self.__connection_flag: bool = False
+        self.__updating_timer: RepeatTimer | None = None
         self.__phonebook: list[Contact] = []
         self.__selected_contact: Contact | None = None
 
         self.connection_bar = ConnectionBar(parent=self)  # Строка подключения.
+        self.connection_bar.button.config(command=self.__onReconnectButtonClick)
         self.connection_bar.pack(fill=BOTH, padx=2, pady=2)
 
         self.table = Table(parent=self)  # Таблица.
         self.table.pack(fill=BOTH, padx=2, pady=2)
 
         self.add_panel = AddPanel(parent=self)  # Панель добавления новой записи.
+        self.add_panel.button_add.config(command=self.__addContact)
         self.add_panel.pack(side=LEFT, fill=BOTH, padx=2)
 
         self.search_panel = SearchPanel(parent=self)  # Панель поиска.
         self.search_panel.pack(side=LEFT, fill=BOTH, padx=2)
 
         self.delete_panel = DeletePanel(parent=self)  # Панель просмотра и удаления.
+        self.delete_panel.button_del.config(command=self.__deleteContact)
         self.delete_panel.pack(side=LEFT, fill=BOTH, padx=2)
 
         self.__selected_bind = self.table.table.bind('<<TreeviewSelect>>', self.__onSelected)
 
-        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        print('\nКлиент запущен.')
-        self.connect()
+        self.__socket: socket.socket | None = None
+        if self.connect():
+            if self.updateData(self.filter):  # Обновляем список контактов клиента.
+                self.startTimer()
+            else:
+                self.close_connection()
+
+    def __onReconnectButtonClick(self):
+        """Событие, которое выполняется при нажатии на кнопку "Попробовать переподключиться"."""
+        if self.connect():
+            if self.updateData(self.filter):  # Обновляем список контактов клиента.
+                self.startTimer()
+            else:
+                self.close_connection()
 
     def __onSelected(self, event):
+        """Событие, которое выполняется при выборе строки в таблице."""
         self.selected_contact = self.table.getSelectedContact()
 
-    @property
-    def connection_flag(self) -> bool:
-        return self.__connection_flag
+    def __addContact(self):
+        """Событие, которое выполняется при нажатии на кнопку "Добавить"."""
+        if self.addContact(self.add_panel.current_contact):
+            self.add_panel.clear()
+            if not self.updateData(self.filter):  # Обновляем список контактов клиента.
+                self.close_connection()
+        else:
+            self.close_connection()
 
-    @connection_flag.setter
-    def connection_flag(self, flag: bool):
-        if self.connection_flag != flag:
-            self.__connection_flag = flag
-            if self.connection_flag:
-                self.connection_bar.setEnabled(False)
-                self.add_panel.setEnabled(True)
+    def __deleteContact(self):
+        """Событие, которое выполняется при нажатии на кнопку "Удалить"."""
+        contact: Contact | None = self.delete_panel.current_contact
+        if contact is not None:
+            if self.deleteContact(contact):
                 if not self.updateData(self.filter):  # Обновляем список контактов клиента.
-                    self.__connection_flag = False
-                    self.connection_bar.setEnabled(True)
-                    self.add_panel.setEnabled(False)
-                else:
-                    self.__updating_timer.start()
+                    self.close_connection()
             else:
-                self.add_panel.setEnabled(False)
-                self.__updating_timer.stop()
-                self.__socket.close()
-                self.table.clear()
-                self.connection_bar.setEnabled(True)
+                self.close_connection()
 
     @property
     def selected_contact(self) -> Contact | None:
@@ -122,32 +122,81 @@ class ClientForm(Tk):
         '''----------------------------------------------'''
         self.__selected_bind = self.table.table.bind('<<TreeviewSelect>>', self.__onSelected)
 
-    def connect(self):
-        try:
-            self.__socket.connect(address)  # Подключаемся к серверному сокету.
-        except Exception as error:
-            self.connection_flag = False
-            self.connection_bar.setText('Соединение не установлено. Ошибка: {0}.'.format(error))
-            print('Функция: socket.connect. Ошибка: {0}.'.format(error))
-        else:  # Если исключения не было.
-            self.connection_flag = True
-            self.connection_bar.setText('Соединение с сервером успешно установлено.')
+    def startTimer(self):
+        def __autoupdate_function():
+            # if not self.updateData(self.filter):  # Обновляем список контактов клиента.
+            #     self.connection_flag = False
+
+            print('before __autoupdate_function pass')
+            pass
+            print('before __autoupdate_function self.filter')
+            filter: Filter | None = self.filter
+            print('before __autoupdate_function')
+            flag: bool = self.updateData(filter)  # Обновляем список контактов клиента.
+            print('after __autoupdate_function: {0}'.format(flag))
+
+        if self.__updating_timer is None:
+            self.__updating_timer = RepeatTimer(interval=self.AUTOUPDATE_INTERVAL, function=__autoupdate_function)
+            self.__updating_timer.start()
+        else:
+            self.__updating_timer.stop()
+            self.__updating_timer = None
+            self.__updating_timer = RepeatTimer(interval=self.AUTOUPDATE_INTERVAL, function=__autoupdate_function)
+            self.__updating_timer.start()
+
+    def stopTimer(self):
+        if self.__updating_timer is None:
+            return
+        else:
+            self.__updating_timer.stop()
+            self.__updating_timer = None
+
+    def close_connection(self):
+        self.add_panel.setEnabled(False)
+        self.stopTimer()
+        if self.__socket is not None:
+            self.__socket.close()
+            self.__socket = None
+        self.table.clear()
+        self.connection_bar.setText('Соединение отсутствует! Попробуйте переподключиться!')
+        self.connection_bar.setEnabled(True)
+
+    def connect(self) -> bool:
+        if self.__socket is None:
+            self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            address: tuple[str, int] = (self.connection_bar.host, PORT)
+            try:
+                self.__socket.connect(address)  # Подключаемся к серверному сокету.
+            except Exception as error:
+                self.__socket.close()
+                self.__socket = None
+                self.connection_bar.setText('Соединение не установлено. Ошибка: {0}.'.format(error))
+                return False
+            else:  # Если исключения не было.
+                self.connection_bar.setEnabled(False)
+                self.add_panel.setEnabled(True)
+                self.connection_bar.setText('Соединение с сервером успешно установлено.')
+                return True
+        else:
+            return False
 
     def destroy(self):
-        self.connection_flag = False
+        self.close_connection()
         super().destroy()
 
     def updateData(self, filter: Filter | None) -> bool:
         """Обновляет список контактов клиента."""
-        print('Запрос на обновление данных.')
+        print('updateData: 000')
         request = ClientRequest(command=Commands.UPDATE, data=filter)
         dump = pickle.dumps(request)  # Сериализация.
+        print('updateData: 001')
         try:
             self.__socket.send(dump)  # Отправляем сообщение.
         except Exception as error:
             print('Функция: socket.send. Ошибка: {0}.'.format(error))
             return False
         else:  # Если исключения не было.
+            print('updateData: 002')
             try:
                 data = self.__socket.recv(1024)  # Получаем список телефонных номеров.
             except Exception as error:
@@ -163,7 +212,6 @@ class ClientForm(Tk):
                         if response.command == Commands.UPDATE:
                             if response.flag:
                                 self.phonebook = response.data
-                                print('Обновление данных успешно выполнено.')
                                 return True
                             else:
                                 print('Ошибка выполнения запроса ({0}) на сервере!'.format(response.command))
@@ -213,7 +261,6 @@ class ClientForm(Tk):
 
     def deleteContact(self, contact: Contact) -> bool:
         """Удаляет контакт из телефонной книги."""
-        print('Запрос на удаление {0}.'.format(str(contact)))
         request = ClientRequest(command=Commands.DELETE, data=contact)
         dump = pickle.dumps(request)  # Сериализация.
         try:
@@ -258,15 +305,19 @@ class ConnectionBar(Frame):
     """Строка подключения."""
     def __init__(self, parent: ClientForm):
         super().__init__(master=parent, borderwidth=1, relief=SOLID)
+        self.var = StringVar()
+
+        self.host_label = Label(master=self, text='Хост:')
+        self.host_label.pack(side=LEFT)
+
+        self.host_entry = Entry(master=self, textvariable=self.var)
+        self.host_entry.insert(0, 'localhost')
+        self.host_entry.pack(side=LEFT)
 
         self.status_label = Label(master=self)
         self.status_label.pack(side=LEFT)
 
-        def onClick():
-            print('Переподключение.')
-            parent.connect()
-
-        self.button = ttk.Button(master=self, text='Попробовать переподключиться', command=onClick)
+        self.button = ttk.Button(master=self, text='Попробовать переподключиться')
         self.button.pack(side=RIGHT)
 
     def setEnabled(self, flag: bool):
@@ -274,6 +325,10 @@ class ConnectionBar(Frame):
 
     def setText(self, text: str):
         self.status_label.config(text=text)
+
+    @property
+    def host(self) -> str:
+        return self.var.get()
 
 
 class Table(Frame):
@@ -383,23 +438,16 @@ class AddPanel(Frame):
         self.frame_note = EntryBar(text='Заметка:', parent=self)
         self.frame_note.pack(anchor=W, fill=X)
 
-        def onClick():
-            note: str = self.frame_note.get()  # Заметка.
-            new_contact = Contact(name=self.frame_name.get(),
-                                  surname=self.frame_surname.get(),
-                                  patronymic=self.frame_patronymic.get(),
-                                  number=self.frame_number.get(),
-                                  note=note)
-
-            if parent.addContact(new_contact):
-                self.clear()
-                if not parent.updateData(parent.filter):  # Обновляем список контактов клиента.
-                    parent.connection_flag = False
-            else:
-                parent.connection_flag = False
-
-        self.button_add = ttk.Button(master=self, text='Добавить', state=DISABLED, command=onClick)
+        self.button_add = ttk.Button(master=self, text='Добавить', state=DISABLED)
         self.button_add.pack(side=BOTTOM)
+
+    @property
+    def current_contact(self) -> Contact:
+        return Contact(name=self.frame_name.get(),
+                       surname=self.frame_surname.get(),
+                       patronymic=self.frame_patronymic.get(),
+                       number=self.frame_number.get(),
+                       note=self.frame_note.get())
 
     def setEnabled(self, flag: bool):
         self.button_add.config(state=NORMAL if flag else DISABLED)
@@ -426,7 +474,7 @@ class FieldBar(Frame):
 
 class DeletePanel(Frame):
     """Панель просмотра и удаления."""
-    def __init__(self, parent=None):
+    def __init__(self, parent: ClientForm):
         super().__init__(master=parent, borderwidth=1, relief=SOLID)
         self.current_contact: Contact | None = None
 
@@ -448,16 +496,7 @@ class DeletePanel(Frame):
         self.note_bar = FieldBar(text='Заметка:', parent=self)
         self.note_bar.pack(anchor=W)
 
-        def onClick():
-            if self.current_contact is not None:
-                print('Удаление {0}.'.format(str(self.current_contact)))
-                if parent.deleteContact(self.current_contact):
-                    if not parent.updateData(parent.filter):  # Обновляем список контактов клиента.
-                        parent.connection_flag = False
-                else:
-                    parent.connection_flag = False
-
-        self.button_del = ttk.Button(master=self, text='Удалить', state='disabled', command=onClick)
+        self.button_del = ttk.Button(master=self, text='Удалить', state='disabled')
         self.button_del.pack(side=BOTTOM)
 
     def setCurrentContact(self, contact: Contact | None):
@@ -487,8 +526,6 @@ class SearchPanel(Frame):
         self.var = StringVar()
 
         def __onEntryChanged(*args):
-            if self.filter is not None:
-                print('*Поиск \"{0}\" в столбце {1}*'.format(self.filter.text, self.filter.field))
             parent.updateData(filter=self.filter)  # Обновляем список контактов клиента.
 
         self.var.trace("w", __onEntryChanged)
@@ -497,8 +534,6 @@ class SearchPanel(Frame):
         title.pack(side=TOP)
 
         def onSelected(event):
-            if self.filter is not None:
-                print('*Поиск \"{0}\" в столбце {1}*'.format(self.filter.text, self.filter.field))
             parent.updateData(filter=self.filter)  # Обновляем список контактов клиента.
 
         field_frame = Frame(master=self)
@@ -527,7 +562,6 @@ class SearchPanel(Frame):
 
     @property
     def text(self) -> str | None:
-        # text: str = self.entry.get()
         text: str = self.var.get()
         return text if text else None
 

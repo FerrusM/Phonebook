@@ -38,7 +38,7 @@ class DatabaseConnection:
             cursor.execute('INSERT INTO {0} (name, surname, patronymic, number, note) VALUES (?, ?, ?, ?, ?);'.format(cls.TABLE),
                            (pbr.name, pbr.surname, pbr.patronymic, pbr.number, pbr.note))
         except Exception as error:
-            pass
+            ...
 
         connection.commit()
         connection.close()
@@ -92,7 +92,6 @@ class DatabaseConnection:
             request: str = 'SELECT * FROM {0};'.format(cls.TABLE)
             cursor.execute(request)
         else:
-            print('filter = \'*{0}*\''.format(filter.text))
             request: str = 'SELECT * FROM {0} WHERE {1} GLOB \'*{2}*\';'.format(cls.TABLE, filter.field, filter.text)
             cursor.execute(request)
 
@@ -117,23 +116,19 @@ def work_with_client(client_socket: socket, client_address):
         try:
             client_socket.sendall(dump)  # Отправляем данные клиенту.
         except Exception as error:
-            __print('Функция: socket.send. Ошибка: {0}.'.format(error))
             return False
         else:  # Если исключения не было.
             return True
 
     with client_socket:
-        __print('Подключился.')
         while True:
             try:
                 data = client_socket.recv(1024)  # Принимаем команды от клиента.
             except Exception as error:
-                __print('Функция: socket.recv. Ошибка: {0}.'.format(error))
                 break
             else:  # Если исключения не было.
                 if data == b'':
-                    __print('Клиент отключился.')
-                    break
+                    break  # Клиент отключился.
                 else:
                     request: ClientRequest = pickle.loads(data)
                     if isinstance(request, ClientRequest):
@@ -141,42 +136,21 @@ def work_with_client(client_socket: socket, client_address):
                             case Commands.ADD:
                                 contact: Contact = request.data
                                 DatabaseConnection.insert(contact)
-                                __print('Добавлен новый контакт ({0}).'.format(contact.number))
                                 response = ServerResponse(command=Commands.ADD, flag=True)
                                 send(response)
-                                ...
                             case Commands.DELETE:
                                 contact: Contact = request.data
-                                __print('Удаление контакта ({0}).'.format(str(contact)))
                                 delete_flag: bool = DatabaseConnection.delete(contact)
                                 response = ServerResponse(command=Commands.DELETE, flag=delete_flag)
                                 send(response)
-                                ...
                             case Commands.UPDATE:
-                                __print('Запрос всех контактов из телефонной книги.')
                                 filter: Filter | None = request.data
                                 phonebook: list[Contact] = DatabaseConnection.getFilteredPhones(filter)
                                 response = ServerResponse(command=Commands.UPDATE, flag=True, data=phonebook)
                                 send(response)
-                                ...
-                            case _:
-                                __print('Неизвестный запрос от клиента!')
-                    else:
-                        __print('Некорректный тип сообщения от клиента ({0})!'.format(type(request)))
-            ...
-
-    __print('Отключился.')
 
 
 if __name__ == '__main__':
-
-    # listener: socket = socket.socket(family=socket.AF_INET, type=socket.SOCK_STREAM)  # Создаём сокет.
-    # listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Устанавливаем значение опции сокета.
-    # IP: str = socket.gethostbyname(socket.gethostname())  # Возвращает IP-адрес (строку вида '255.255.255.255.255') для хоста.
-    # PORT = 12333
-    # listener.bind((IP, PORT))
-    # listener.listen(0)  # Разрешаем серверу принимать запросы.
-
     run_flag: bool = True
 
     def server_loop():
@@ -193,18 +167,8 @@ if __name__ == '__main__':
 
         listener.bind(address)  # Связываем сокет с портом, где он будет ожидать сообщения.
         listener.listen(10)  # Указываем сколько может сокет принимать соединений.
-        print('Server is running, please, press ctrl+c to stop.')
+        print('\nСервер запущен. Хост: {0}'.format(socket.gethostname()))
 
-        # while True:
-        #     client_socket, client_address = listener.accept()  # Начинаем принимать соединения.
-        #     client_thread = threading.Thread(target=work_with_client, args=(client_socket, client_address))
-        #     client_thread.start()
-
-
-        # Запуск функции ticker в отдельном потоке.
-        # Параметр daemon=True нужен чтобы
-        # дочерний поток умирал вместе с основным
-        # в случае внештатного выхода.
         threading.Thread(target=server_loop, daemon=True).start()
 
         while run_flag:
