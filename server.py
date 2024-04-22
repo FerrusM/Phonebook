@@ -107,57 +107,60 @@ class DatabaseConnection:
         return phone_list
 
 
-def work_with_client(client_socket: socket, client_address):
-    def __print(text: str):
-        print('Клиент ({0}): {1}'.format(client_address, text))
-
-    def send(data) -> bool:
-        dump = pickle.dumps(data)  # Сериализация.
-        try:
-            client_socket.sendall(dump)  # Отправляем данные клиенту.
-        except Exception as error:
-            return False
-        else:  # Если исключения не было.
-            return True
-
-    with client_socket:
-        while True:
-            try:
-                data = client_socket.recv(1024)  # Принимаем команды от клиента.
-            except Exception as error:
-                break
-            else:  # Если исключения не было.
-                if data == b'':
-                    break  # Клиент отключился.
-                else:
-                    request: ClientRequest = pickle.loads(data)
-                    if isinstance(request, ClientRequest):
-                        match request.command:
-                            case Commands.ADD:
-                                contact: Contact = request.data
-                                DatabaseConnection.insert(contact)
-                                response = ServerResponse(command=Commands.ADD, flag=True)
-                                send(response)
-                            case Commands.DELETE:
-                                contact: Contact = request.data
-                                delete_flag: bool = DatabaseConnection.delete(contact)
-                                response = ServerResponse(command=Commands.DELETE, flag=delete_flag)
-                                send(response)
-                            case Commands.UPDATE:
-                                filter: Filter | None = request.data
-                                phonebook: list[Contact] = DatabaseConnection.getFilteredPhones(filter)
-                                response = ServerResponse(command=Commands.UPDATE, flag=True, data=phonebook)
-                                send(response)
-
-
 if __name__ == '__main__':
     run_flag: bool = True
 
+    def work_with_client(client_socket: socket, client_address):
+        def send(data) -> bool:
+            dump = pickle.dumps(data)  # Сериализация.
+            try:
+                client_socket.sendall(dump)  # Отправляем данные клиенту.
+            except Exception as error:
+                return False
+            else:  # Если исключения не было.
+                return True
+
+        with client_socket:
+            while run_flag:
+                try:
+                    data = client_socket.recv(1024)  # Принимаем команды от клиента.
+                except Exception as error:
+                    break
+                else:  # Если исключения не было.
+                    if data == b'':
+                        break  # Клиент отключился.
+                    else:
+                        request: ClientRequest = pickle.loads(data)
+                        if isinstance(request, ClientRequest):
+                            match request.command:
+                                case Commands.ADD:
+                                    contact: Contact = request.data
+                                    DatabaseConnection.insert(contact)
+                                    response = ServerResponse(command=Commands.ADD, flag=True)
+                                    send(response)
+                                case Commands.DELETE:
+                                    contact: Contact = request.data
+                                    delete_flag: bool = DatabaseConnection.delete(contact)
+                                    response = ServerResponse(command=Commands.DELETE, flag=delete_flag)
+                                    send(response)
+                                case Commands.UPDATE:
+                                    filter: Filter | None = request.data
+                                    phonebook: list[Contact] = DatabaseConnection.getFilteredPhones(filter)
+                                    response = ServerResponse(command=Commands.UPDATE, flag=True, data=phonebook)
+                                    send(response)
+
     def server_loop():
         while run_flag:
-            client_socket, client_address = listener.accept()  # Начинаем принимать соединения.
-            client_thread = threading.Thread(target=work_with_client, args=(client_socket, client_address))
-            client_thread.start()
+            try:
+                client_socket, client_address = listener.accept()  # Начинаем принимать соединения.
+            except Exception as error:
+                if not run_flag:
+                    break
+                else:
+                    raise error
+            else:
+                client_thread = threading.Thread(target=work_with_client, args=(client_socket, client_address))
+                client_thread.start()
 
     DatabaseConnection.createDatabase()  # Создаём базу данных.
 

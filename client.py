@@ -43,9 +43,6 @@ class ClientForm(Tk):
         self.table = Table(parent=self)  # Таблица.
         self.table.pack(side=TOP, fill=BOTH, padx=2, pady=2, expand=True)
 
-        # self.search_panel = SearchPanel(parent=self)  # Панель поиска.
-        # self.search_panel.pack(side=LEFT, fill=BOTH, padx=2, expand=True)
-
         self.delete_panel = DeletePanel(parent=self)  # Панель просмотра и удаления.
         self.delete_panel.button_del.config(command=self.__deleteContact)
         self.delete_panel.pack(side=LEFT, fill=X, padx=2, expand=True)
@@ -273,7 +270,6 @@ class ClientForm(Tk):
                 if isinstance(response, ServerResponse):
                     if response.command == Commands.DELETE:
                         if response.flag:
-                            print('Удаление успешно выполнено.')
                             return True
                         else:
                             print('Ошибка выполнения запроса ({0}) на сервере!'.format(response.command))
