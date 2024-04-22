@@ -127,13 +127,7 @@ class ClientForm(Tk):
             # if not self.updateData(self.filter):  # Обновляем список контактов клиента.
             #     self.connection_flag = False
 
-            print('before __autoupdate_function pass')
-            pass
-            print('before __autoupdate_function self.filter')
-            filter: Filter | None = self.filter
-            print('before __autoupdate_function')
-            flag: bool = self.updateData(filter)  # Обновляем список контактов клиента.
-            print('after __autoupdate_function: {0}'.format(flag))
+            flag: bool = self.updateData(self.filter)  # Обновляем список контактов клиента.
 
         if self.__updating_timer is None:
             self.__updating_timer = RepeatTimer(interval=self.AUTOUPDATE_INTERVAL, function=__autoupdate_function)
@@ -186,17 +180,14 @@ class ClientForm(Tk):
 
     def updateData(self, filter: Filter | None) -> bool:
         """Обновляет список контактов клиента."""
-        print('updateData: 000')
         request = ClientRequest(command=Commands.UPDATE, data=filter)
         dump = pickle.dumps(request)  # Сериализация.
-        print('updateData: 001')
         try:
             self.__socket.send(dump)  # Отправляем сообщение.
         except Exception as error:
             print('Функция: socket.send. Ошибка: {0}.'.format(error))
             return False
         else:  # Если исключения не было.
-            print('updateData: 002')
             try:
                 data = self.__socket.recv(1024)  # Получаем список телефонных номеров.
             except Exception as error:
