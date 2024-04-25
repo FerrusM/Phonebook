@@ -108,7 +108,7 @@ class DatabaseConnection:
 
 
 if __name__ == '__main__':
-    run_flag: bool = True
+    stop_event = threading.Event()
 
     def work_with_client(client_socket: socket, client_address):
         def send(data) -> bool:
@@ -121,7 +121,7 @@ if __name__ == '__main__':
                 return True
 
         with client_socket:
-            while run_flag:
+            while not stop_event.is_set():
                 try:
                     data = client_socket.recv(1024)  # Принимаем команды от клиента.
                 except Exception as error:
@@ -150,11 +150,11 @@ if __name__ == '__main__':
                                     send(response)
 
     def server_loop():
-        while run_flag:
+        while not stop_event.is_set():
             try:
                 client_socket, client_address = listener.accept()  # Начинаем принимать соединения.
             except Exception as error:
-                if not run_flag:
+                if not stop_event.is_set():
                     break
                 else:
                     raise error
@@ -174,7 +174,7 @@ if __name__ == '__main__':
 
         threading.Thread(target=server_loop, daemon=True).start()
 
-        while run_flag:
+        while not stop_event.is_set():
             command = input('Для выхода введите "stop"\n')
             if command.lower() == 'stop':
-                run_flag = False
+                stop_event.set()

@@ -10,14 +10,14 @@ from common import Contact, PORT, ClientRequest, Commands, ServerResponse, Filte
 class RepeatTimer(threading.Timer):
     def __init__(self, interval: float, function):
         super().__init__(interval, function)
-        self.__interrupt: bool = False
+        self.__stop_event = threading.Event()
 
     def run(self):
-        while not self.finished.wait(self.interval) and not self.__interrupt:
+        while not self.__stop_event.wait(self.interval):
             self.function(*self.args, **self.kwargs)
 
     def stop(self):
-        self.__interrupt = True
+        self.__stop_event.set()
         self.join()  # Дожидаемся завершения работы потока.
 
 
