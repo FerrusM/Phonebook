@@ -1,35 +1,19 @@
 import enum
 import pickle
 import socket
-import threading
 from tkinter import *
 from tkinter import ttk
 from common import Contact, PORT, ClientRequest, Commands, ServerResponse, Filter
 
 
-class RepeatTimer(threading.Timer):
-    def __init__(self, interval: float, function):
-        super().__init__(interval, function)
-        self.__stop_event = threading.Event()
-
-    def run(self):
-        while not self.__stop_event.wait(self.interval):
-            self.function(*self.args, **self.kwargs)
-
-    def stop(self):
-        self.__stop_event.set()
-        self.join()  # Дожидаемся завершения работы потока.
-
-
 class ClientForm(Tk):
-    AUTOUPDATE_INTERVAL: float = 5.0
+    AUTOUPDATE_PERIOD: int = 1000  # [мс]
 
     def __init__(self):
         super().__init__()
         self.title('Клиент')  # Заголовок окна.
         self.geometry("1200x600")  # Устанавливаем размеры окна.
 
-        self.__updating_timer: RepeatTimer | None = None
         self.__phonebook: list[Contact] = []
         self.__selected_contact: Contact | None = None
 
@@ -54,21 +38,39 @@ class ClientForm(Tk):
         self.__selected_bind = self.table.table.bind('<<TreeviewSelect>>', self.__onSelected)
 
         self.__socket: socket.socket | None = None
-        if self.connect():
+
+        self.__after_id: str | None = None
+
+        self.__onReconnectButtonClick()
+
+    def startAutoupdate(self):
+        """Запускает периодическое автообновление данных."""
+        assert self.__after_id is None
+
+        def __autoupdate_function():
+            assert self.__after_id is not None
             if self.updateData(self.filter):  # Обновляем список контактов клиента.
-                self.startTimer()
+                self.__after_id = self.after(self.AUTOUPDATE_PERIOD, __autoupdate_function)
             else:
                 self.close_connection()
+
+        self.__after_id = self.after(self.AUTOUPDATE_PERIOD, __autoupdate_function)
+
+    def stopAutoupdate(self):
+        """Останавливает периодическое автообновление данных."""
+        if self.__after_id is not None:
+            self.after_cancel(self.__after_id)
+            self.__after_id = None
 
     def __onReconnectButtonClick(self):
         """Событие, которое выполняется при нажатии на кнопку "Попробовать переподключиться"."""
         if self.connect():
             if self.updateData(self.filter):  # Обновляем список контактов клиента.
-                self.startTimer()
+                self.startAutoupdate()
             else:
                 self.close_connection()
 
-    def __onSelected(self, event):
+    def __onSelected(self, event: Event):
         """Событие, которое выполняется при выборе строки в таблице."""
         self.selected_contact = self.table.getSelectedContact()
 
@@ -122,32 +124,9 @@ class ClientForm(Tk):
         '''----------------------------------------------'''
         self.__selected_bind = self.table.table.bind('<<TreeviewSelect>>', self.__onSelected)
 
-    def startTimer(self):
-        def __autoupdate_function():
-            # if not self.updateData(self.filter):  # Обновляем список контактов клиента.
-            #     self.connection_flag = False
-
-            flag: bool = self.updateData(self.filter)  # Обновляем список контактов клиента.
-
-        if self.__updating_timer is None:
-            self.__updating_timer = RepeatTimer(interval=self.AUTOUPDATE_INTERVAL, function=__autoupdate_function)
-            self.__updating_timer.start()
-        else:
-            self.__updating_timer.stop()
-            self.__updating_timer = None
-            self.__updating_timer = RepeatTimer(interval=self.AUTOUPDATE_INTERVAL, function=__autoupdate_function)
-            self.__updating_timer.start()
-
-    def stopTimer(self):
-        if self.__updating_timer is None:
-            return
-        else:
-            self.__updating_timer.stop()
-            self.__updating_timer = None
-
     def close_connection(self):
         self.add_panel.setEnabled(False)
-        self.stopTimer()
+        self.stopAutoupdate()
         if self.__socket is not None:
             self.__socket.close()
             self.__socket = None
@@ -323,8 +302,13 @@ class ConnectionBar(Frame):
 
 class Table(Frame):
     """Таблица."""
-    def __init__(self, parent: ClientForm, phones: list[Contact] | None = None):
+    def __init__(self, parent: ClientForm, phonebook: list[Contact] | None = None):
         super().__init__(master=parent, borderwidth=1, relief=SOLID)
+
+        '''Все строки, состоящие только из цифр и начинающиеся с нулей, ttk.Treeview при чтении значений из ячеек 
+        автоматически конвертирует в int, отсекая нули в начале. Поэтому, чтобы недопустить ошибок, отображаемые данные 
+        необходимо куда-то дублировать.'''
+        self.__phonebook: list[Contact] = []
 
         title = Label(master=self, text='ТЕЛЕФОННАЯ КНИГА')
         title.pack(side=TOP, fill=X)
@@ -335,45 +319,32 @@ class Table(Frame):
         for column in Columns:
             self.table.heading(column=str(column.name), text=column.value)
 
-        if phones is not None:
-            self.add(phones)  # Добавляем строки в таблицу.
+        if phonebook is not None:
+            self.add(phonebook)  # Добавляем строки в таблицу.
 
     def clear(self):
         """Очищает таблицу."""
         self.table.delete(*self.table.get_children())
+        self.__phonebook.clear()
 
     def add(self, phones: list[Contact]):
         """Добавляет строки в таблицу."""
         for p in phones:
-            self.table.insert('', END, values=(p.surname, p.name, p.patronymic, p.number, p.note))
+            self.__phonebook.append(p)
+            row: int = len(self.__phonebook) - 1
+            self.table.insert('', END, text=str(row), values=(p.surname, p.name, p.patronymic, p.number, p.note))
 
-    def setData(self, phones: list[Contact]):
+    def setData(self, phonebook: list[Contact]):
         self.clear()  # Очищаем таблицу.
-        self.add(phones)  # Добавляем строки в таблицу.
+        self.add(phonebook)  # Добавляем строки в таблицу.
 
-    @staticmethod
-    def __getContactFromItem(item) -> Contact:
-        values = item['values']
-        assert len(values) == 5
-        return Contact(name=values[1],
-                       surname=values[0],
-                       patronymic=values[2],
-                       number=values[3],
-                       note=values[4])
-
-    @property
-    def phonebook(self) -> list[Contact]:
-        phonebook: list[Contact] = []
-        for i in self.table.get_children():
-            item = self.table.item(i)
-            contact: Contact = self.__getContactFromItem(item)
-            phonebook.append(contact)
-        return phonebook
+    def __getContactFromRowId(self, row_id: str) -> Contact:
+        pb_row: int = int(self.table.item(row_id)['text'])
+        return self.__phonebook[pb_row]
 
     def selectContact(self, contact: Contact) -> bool:
         for i in self.table.get_children():
-            item = self.table.item(i)
-            current_contact: Contact = self.__getContactFromItem(item)
+            current_contact: Contact = self.__getContactFromRowId(i)
             if current_contact == contact:
                 self.table.selection_set(i)
                 return True
@@ -384,8 +355,8 @@ class Table(Frame):
         row_id_list: tuple[str, ...] = self.table.selection()
         if row_id_list:
             row_id: str = row_id_list[0]
-            item = self.table.item(row_id)
-            return self.__getContactFromItem(item)
+            pb_row: int = int(self.table.item(row_id)['text'])
+            return self.__phonebook[pb_row]
         else:
             return None
 
